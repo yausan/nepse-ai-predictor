@@ -461,7 +461,7 @@ def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     socketserver.TCPServer.allow_reuse_address = True
 
-    with socketserver.TCPServer(("", PORT), NEPSEPredictorHandler) as httpd:
+    with socketserver.TCPServer(("0.0.0.0", PORT), NEPSEPredictorHandler) as httpd:
         print(f"\n{'='*55}")
         print(f"  NEPSE AI Prediction Dashboard — Server Active")
         print(f"  Port    : {PORT}")
