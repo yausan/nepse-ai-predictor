@@ -1,0 +1,17 @@
+[
+  {
+    "run_at": "2026-06-30 05:38:12",
+    "current_price": 436.9,
+    "current_date": "2026-06-29",
+    "prediction_date": "2026-06-30",
+    "predicted_close": 460.1175091761351,
+    "predicted_change_pct": 5.314147213580942,
+    "direction": "UP",
+    "confidence": 0.9127170933428264,
+    "signal": "HOLD",
+    "mae": 6.44173803497338,
+    "snapshot_file": "predictions/alicl_2026-06-30_20260630_053812.json",
+    "actual_close": null,
+    "was_correct": null
+  }
+]

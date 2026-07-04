@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEPSE AI Predictor — Daily Market Intelligence</title>
+    <meta name="description" content="AI-powered NEPSE index and stock prediction system for Nepal traders. Daily point predictions with accuracy tracking.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/nepali-date-converter/dist/nepali-date-converter.umd.min.js"></script>
+    <link rel="stylesheet" href="index.css?v=2">
+</head>
+<body>
+<div class="app-layout">
+
+    <!-- ══════════════ SIDEBAR ══════════════ -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-inner">
+
+            <!-- Brand -->
+            <div class="brand">
+                <div class="brand-icon-wrap">
+                    <i class="fa-solid fa-chart-line"></i>
+                </div>
+                <div class="brand-text">
+                    <span class="brand-title">NEPSE AI</span>
+                    <span class="brand-sub">Prediction System</span>
+                </div>
+            </div>
+
+            <!-- Nav Tabs -->
+            <nav class="sidebar-nav">
+                <button class="nav-btn active" id="nav-nepse" onclick="switchTab('nepse')">
+                    <i class="fa-solid fa-mountain-city"></i>
+                    <span>NEPSE Index</span>
+                </button>
+                <button class="nav-btn" id="nav-stocks" onclick="switchTab('stocks')">
+                    <i class="fa-solid fa-chart-candlestick"></i>
+                    <span>Stock Predictor</span>
+                </button>
+                <button class="nav-btn" id="nav-history" onclick="switchTab('history')">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                    <span>Prediction History</span>
+                    <span class="nav-badge" id="pending-badge" style="display:none;">0</span>
+                </button>
+                <button class="nav-btn" id="nav-analysis" onclick="switchTab('analysis')">
+                    <i class="fa-solid fa-magnifying-glass-chart"></i>
+                    <span>7-Layer Analysis</span>
+                </button>
+            </nav>
+
+            <!-- Hidden inputs to maintain JS selector compatibility -->
+            <div style="display: none;">
+                <select id="nepse-pages-select">
+                    <option value="3">3</option>
+                    <option value="10">10</option>
+                    <option value="all">all</option>
+                </select>
+                <select id="symbol-select">
+                    <option value="LICN">LICN</option>
+                    <option value="NABIL">NABIL</option>
+                    <option value="AHPC">AHPC</option>
+                    <option value="UPPER">UPPER</option>
+                    <option value="NICA">NICA</option>
+                    <option value="NLIC">NLIC</option>
+                    <option value="custom">custom</option>
+                </select>
+                <input type="text" id="custom-symbol">
+            </div>
+
+            <!-- History Controls (shown in history tab) -->
+            <div class="sidebar-panel" id="panel-history" style="display:none;">
+                <div class="panel-title"><i class="fa-solid fa-sliders"></i> History Controls</div>
+                <div class="info-box">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <p>Predictions are auto-saved every time you run the model. Auto-Grade checks all pending entries against latest data.</p>
+                </div>
+                <div class="form-group">
+                    <label>Filter Symbol</label>
+                    <input type="text" id="history-symbol-filter" placeholder="e.g. NABIL, LICN..." oninput="renderHistory()" style="text-transform:uppercase">
+                </div>
+                <div class="form-group">
+                    <label>Sort By</label>
+                    <select id="history-sort" onchange="renderHistory()">
+                        <option value="newest">Newest First</option>
+                        <option value="oldest">Oldest First</option>
+                        <option value="symbol">Symbol A–Z</option>
+                    </select>
+                </div>
+                <button class="btn btn-secondary" onclick="loadHistory()" style="width:100%;margin-bottom:0.5rem">
+                    <i class="fa-solid fa-arrows-rotate"></i> Refresh
+                </button>
+                <button class="btn btn-primary" onclick="autocheckHistory()" id="sidebar-autograde-btn" style="width:100%;background:linear-gradient(135deg,#10b981,#059669)">
+                    <i class="fa-solid fa-robot"></i> Auto-Grade Pending
+                </button>
+            </div>
+
+            <!-- Analysis Controls -->
+            <div class="sidebar-panel" id="panel-analysis" style="display:none;">
+                <div class="panel-title"><i class="fa-solid fa-sliders"></i> Analysis Controls</div>
+                <div class="info-box">
+                    <i class="fa-solid fa-circle-info"></i>
+                    <p>Runs a complete 7-layer professional trading analysis: Market Structure, Key Levels, Price Action, Volume, Trend, Momentum, and NEPSE filters.</p>
+                </div>
+                <button class="btn btn-primary" id="btn-run-analysis" onclick="triggerAnalysis()">
+                    <i class="fa-solid fa-magnifying-glass-chart"></i> Run Analysis
+                </button>
+            </div>
+
+
+            <div class="sidebar-footer">
+                <p>Designed for NEPSE Traders 🇳🇵</p>
+                <span>v2.0 · Local Engine</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ══════════════ MAIN ══════════════ -->
+    <main class="main-content" id="main">
+
+        <!-- ── Tab: NEPSE Index ───────────────────── -->
+        <div class="tab-panel" id="tab-nepse">
+            <header class="page-header">
+                <div>
+                    <h1 class="page-title"><i class="fa-solid fa-mountain-city accent"></i> NEPSE Index Prediction</h1>
+                    <p class="page-subtitle" id="nepse-subtitle">Tomorrow's NEPSE market index forecast — AI-powered prediction in Nepali calendar (BS) &nbsp;·&nbsp; Market: Mon–Fri 11:00–15:00 NPT</p>
+                </div>
+                <div class="date-badge"><i class="fa-regular fa-calendar"></i> <span id="current-date-nepse">—</span></div>
+            </header>
+
+            <!-- NEPSE Controls Toolbar Inside Page -->
+            <div class="card glass nepse-toolbar" style="margin-bottom: 1.5rem; display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; padding: 1.25rem;">
+                <!-- Scrape Depth -->
+                <div class="form-group" style="margin-bottom: 0; flex: 1.5; min-width: 180px;">
+                    <label for="nepse-pages-inner" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 0.5rem; display: block; font-weight: 700;">Scrape Depth</label>
+                    <select id="nepse-pages-inner" style="width: 100%; padding: 0.6rem 0.8rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); outline: none; font-size: 0.9rem; appearance: none; cursor: pointer;">
+                        <option value="3">3 pages (~90 days)</option>
+                        <option value="10">10 pages (~300 days)</option>
+                        <option value="all">All pages (full history)</option>
+                    </select>
+                </div>
+                <!-- Buttons -->
+                <div style="display: flex; gap: 0.5rem; flex: 2; min-width: 250px;">
+                    <button id="btn-nepse-update-inner" class="btn btn-primary" onclick="triggerNepseUpdate()" style="flex: 1; font-size: 0.85rem; padding: 0.65rem 1rem;">
+                        <i class="fa-solid fa-rotate"></i> Predict
+                    </button>
+                    <button id="btn-nepse-train-inner" class="btn btn-secondary" onclick="triggerNepsePredict()" style="flex: 1; font-size: 0.85rem; padding: 0.65rem 1rem;">
+                        <i class="fa-solid fa-brain"></i> Retrain
+                    </button>
+                </div>
+                <!-- Info text -->
+                <div style="flex: 2.5; min-width: 280px; display: flex; gap: 0.5rem; background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.15); border-radius: var(--radius-sm); padding: 0.6rem 0.75rem; align-items: flex-start;">
+                    <i class="fa-solid fa-circle-info" style="color: var(--accent-blue); font-size: 0.8rem; margin-top: 0.1rem; flex-shrink: 0;"></i>
+                    <p style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4; margin: 0;">Fetches live NEPSE index history, trains ensemble ML models, and predicts market close across daily, weekly, and monthly horizons.</p>
+                </div>
+            </div>
+
+            <!-- NEPSE Hero Prediction -->
+            <div class="nepse-hero">
+                <div class="hero-card glass" id="nepse-hero-card">
+                    <div class="hero-section">
+                        <div class="hero-label">Last Close (Points)</div>
+                        <div class="hero-value" id="nepse-today-close">—</div>
+                        <div class="hero-date" id="nepse-today-date">— BS</div>
+                    </div>
+                    <div class="hero-arrow" id="nepse-arrow">
+                        <i class="fa-solid fa-arrow-right-long"></i>
+                    </div>
+                    <div class="hero-section tomorrow">
+                        <div class="hero-label" id="nepse-pred-label">Next Session Prediction</div>
+                        <div class="hero-value big" id="nepse-pred-close">—</div>
+                        <div class="hero-change" id="nepse-pred-change">—</div>
+                        <div class="hero-date" id="nepse-pred-date">— BS</div>
+                        <div class="hero-change" id="nepse-pred-range" style="font-size: 0.85rem; margin-top: 5px; color: var(--text-muted);">High: — | Low: —</div>
+                    </div>
+                    <div class="hero-conf-section">
+                        <div class="conf-ring-wrap">
+                            <canvas id="confRing" width="120" height="120"></canvas>
+                            <div class="conf-ring-label">
+                                <span id="nepse-conf-pct">—</span>
+                                <small>AI Conf.</small>
+                            </div>
+                        </div>
+                        <div class="direction-pill" id="nepse-direction-pill">
+                            <i class="fa-solid fa-arrow-trend-up" id="nepse-dir-icon"></i>
+                            <span id="nepse-dir-text">—</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- KPI Strip -->
+                <div class="kpi-strip">
+                    <div class="kpi-card glass">
+                        <div class="kpi-label">Model MAE</div>
+                        <div class="kpi-val" id="nepse-mae">—</div>
+                        <div class="kpi-sub">points error</div>
+                    </div>
+                    <div class="kpi-card glass">
+                        <div class="kpi-label">Direction Accuracy</div>
+                        <div class="kpi-val" id="nepse-dir-acc">—</div>
+                        <div class="kpi-sub">on test set</div>
+                    </div>
+                    <div class="kpi-card glass">
+                        <div class="kpi-label">RSI Signal</div>
+                        <div class="kpi-val" id="nepse-rsi">—</div>
+                        <div class="kpi-sub" id="nepse-rsi-label">—</div>
+                    </div>
+                    <div class="kpi-card glass">
+                        <div class="kpi-label">MAPE</div>
+                        <div class="kpi-val" id="nepse-mape">—</div>
+                        <div class="kpi-sub">mean abs % error</div>
+                    </div>
+                </div>
+            </div>
+            <!-- NEPSE 7-Layer Signal Box -->
+            <div class="card glass nepse-signals" style="margin-bottom: 2rem;">
+                <div class="card-header">
+                    <h3>7-Layer Analysis Signals</h3>
+                    <div class="signal-badge" id="nepse-overall-signal">HOLD</div>
+                </div>
+                <div class="signal-reasons">
+                    <ul id="nepse-signal-reasons-list"><li>Run prediction to see signals.</li></ul>
+                </div>
+            </div>
+
+            <!-- NEPSE Charts -->
+            <div class="charts-grid">
+                <div class="card glass chart-card">
+                    <div class="card-header">
+                        <h3>NEPSE Index History & Bollinger Bands</h3>
+                        <div class="chart-legend">
+                            <span class="leg-dot" style="background:#3b82f6"></span>Actual
+                            <span class="leg-dot" style="background:#f59e0b"></span>SMA 20
+                            <span class="leg-dot" style="background:#8b5cf6;opacity:0.6"></span>Bands
+                        </div>
+                    </div>
+                    <div class="chart-wrap"><canvas id="nepseChart"></canvas></div>
+                </div>
+                <div class="card glass chart-card">
+                    <div class="card-header">
+                        <h3>AI Model vs Actual (Last 30 Days)</h3>
+                    </div>
+                    <div class="chart-wrap"><canvas id="nepsePerfChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Tab: Stock Predictor ───────────────────── -->
+        <div class="tab-panel" id="tab-stocks" style="display:none;">
+            <header class="page-header">
+                <div>
+                    <h1 class="page-title"><i class="fa-solid fa-chart-candlestick accent"></i> Stock Predictor</h1>
+                    <p class="page-subtitle" id="stock-subtitle">Select a stock and run AI to get tomorrow's price forecast</p>
+                </div>
+                <div class="date-badge"><i class="fa-regular fa-calendar"></i> <span id="current-date-stock">—</span></div>
+            </header>
+
+            <!-- Stock Controls Toolbar Inside Page -->
+            <div class="card glass stock-toolbar" style="margin-bottom: 1.5rem; display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; padding: 1.25rem;">
+                <!-- Dropdown -->
+                <div class="form-group" style="margin-bottom: 0; flex: 1.5; min-width: 180px;">
+                    <label for="symbol-select-inner" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 0.5rem; display: block; font-weight: 700;">Select Ticker</label>
+                    <select id="symbol-select-inner" style="width: 100%; padding: 0.6rem 0.8rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); outline: none; font-size: 0.9rem; appearance: none; cursor: pointer;">
+                        <option value="LICN">LICN — Life Insurance Corp</option>
+                        <option value="NABIL">NABIL — Nabil Bank</option>
+                        <option value="AHPC">AHPC — Arun Valley Hydro</option>
+                        <option value="UPPER">UPPER — Upper Tamakoshi</option>
+                        <option value="NICA">NICA — NIC Asia Bank</option>
+                        <option value="NLIC">NLIC — Nepal Life Insurance</option>
+                        <option value="custom">— Custom Symbol —</option>
+                    </select>
+                </div>
+                <!-- Custom Ticker input -->
+                <div class="form-group" id="custom-symbol-group-inner" style="display:none; margin-bottom: 0; flex: 1; min-width: 120px;">
+                    <label for="custom-symbol-inner" style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 0.5rem; display: block; font-weight: 700;">Ticker Code</label>
+                    <input type="text" id="custom-symbol-inner" placeholder="E.g. CIT" style="width: 100%; padding: 0.6rem 0.8rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); text-transform: uppercase; font-size: 0.9rem; outline: none;">
+                </div>
+                <!-- Buttons -->
+                <div style="display: flex; gap: 0.5rem; flex: 2; min-width: 250px;">
+                    <button id="btn-update-inner" class="btn btn-primary" onclick="triggerStockUpdate()" 
+                        style="flex: 1; font-size: 0.85rem; padding: 0.65rem 1rem; opacity:0.4; cursor:not-allowed;"
+                        disabled title='Run "Retrain &amp; Analyse Market" first to unlock predictions'>
+                        <i class="fa-solid fa-bolt"></i> Predict
+                    </button>
+                    <button id="btn-train-inner" class="btn btn-secondary" onclick="triggerStockTrain()" style="flex: 1.8; font-size: 0.82rem; padding: 0.65rem 1rem;">
+                        <i class="fa-solid fa-magnifying-glass-chart"></i> Retrain &amp; Analyse Market
+                    </button>
+                </div>
+                <!-- Timeframe Forecast selection -->
+                <div class="timeframe-selector-group" style="display: flex; flex-direction: column; gap: 0.5rem; flex: 2.5; min-width: 280px;">
+                    <label style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); font-weight: 700;">Forecast Horizon</label>
+                    <div class="timeframe-tabs" style="display: flex; background: var(--bg-elevated); border: 1px solid var(--border); padding: 3px; border-radius: var(--radius-sm);">
+                        <button class="timeframe-tab active" data-timeframe="1D" onclick="changeTimeframe('1D')" style="flex: 1; background: transparent; border: none; padding: 0.5rem 0.75rem; font-family: var(--font-main); font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; border-radius: 5px; transition: all 0.2s;">Day (1D)</button>
+                        <button class="timeframe-tab" data-timeframe="5D" onclick="changeTimeframe('5D')" style="flex: 1; background: transparent; border: none; padding: 0.5rem 0.75rem; font-family: var(--font-main); font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; border-radius: 5px; transition: all 0.2s;">Week (5D)</button>
+                        <button class="timeframe-tab" data-timeframe="20D" onclick="changeTimeframe('20D')" style="flex: 1; background: transparent; border: none; padding: 0.5rem 0.75rem; font-family: var(--font-main); font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); cursor: pointer; border-radius: 5px; transition: all 0.2s;">Month (20D)</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stock Prediction Cards -->
+            <div class="cards-row">
+                <div class="card glass summary-card">
+                    <div class="card-header">
+                        <h3>Tomorrow's Prediction</h3>
+                        <span class="badge-pill" id="target-date-badge">—</span>
+                    </div>
+                    <div class="prediction-main">
+                        <div class="pred-block">
+                            <div class="pred-label">Predicted Close</div>
+                            <div class="pred-price-row">
+                                <span class="pred-price" id="pred-close-price">N/A</span>
+                                <span class="pred-change" id="pred-price-change">N/A</span>
+                            </div>
+                            <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 5px;" id="pred-range-text">High: N/A | Low: N/A</div>
+                        </div>
+                        <div class="pred-block">
+                            <div class="pred-label">Direction</div>
+                            <div class="direction-pill neutral" id="stock-direction-pill">
+                                <i class="fa-solid fa-minus" id="stock-dir-icon"></i>
+                                <span id="stock-dir-text">NEUTRAL</span>
+                            </div>
+                        </div>
+                        <div class="pred-block">
+                            <div class="pred-label">AI Confidence</div>
+                            <div class="conf-bar-wrap">
+                                <div class="conf-bar"><div class="conf-fill" id="stock-conf-fill" style="width:0%"></div></div>
+                                <span class="conf-pct" id="stock-conf-pct">0%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card glass recommendation-card">
+                    <div class="card-header">
+                        <h3>AI Signal</h3>
+                        <i class="fa-solid fa-lightbulb" style="color:var(--accent-gold)"></i>
+                    </div>
+                    <div class="signal-wrap">
+                        <div class="signal-badge hold" id="signal-badge">HOLD</div>
+                        <div class="signal-reasons">
+                            <h4>Rationale:</h4>
+                            <ul id="signal-reasons-list"><li>Run prediction to see signals.</li></ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stock Charts -->
+            <div class="charts-grid">
+                <div class="card glass chart-card">
+                    <div class="card-header">
+                        <h3>Price History & Technical Overlays</h3>
+                        <div class="chart-legend">
+                            <span class="leg-dot" style="background:#3b82f6"></span>Actual
+                            <span class="leg-dot" style="background:#f59e0b"></span>SMA 20
+                            <span class="leg-dot" style="background:#8b5cf6;opacity:0.6"></span>BB
+                        </div>
+                    </div>
+                    <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+                </div>
+                <div class="card glass chart-card">
+                    <div class="card-header">
+                        <h3>AI Model vs Actual (Last 30 Days)</h3>
+                    </div>
+                    <div class="chart-wrap"><canvas id="perfChart"></canvas></div>
+                </div>
+            </div>
+            <!-- Deep Analysis Report -->
+            <div class="card glass" id="deep-analysis-card" style="display: none; margin-bottom: 2rem;">
+                <div class="card-header" style="border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 1rem; margin-bottom: 1rem;">
+                    <h3>Deep Contextual Analysis (LLM)</h3>
+                    <div style="display: flex; gap: 10px;">
+                        <span class="badge-pill" id="deep-sentiment-badge" style="background: var(--accent-blue);">Sentiment: Neutral</span>
+                        <span class="badge-pill" id="deep-confidence-badge" style="background: rgba(255,255,255,0.1);">Confidence: 0%</span>
+                    </div>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+                    <div>
+                        <h4 style="color: var(--accent-gold); margin-bottom: 0.5rem;"><i class="fa-solid fa-bolt"></i> Executive Summary</h4>
+                        <p id="deep-exec-summary" style="line-height: 1.6; color: var(--text-muted); margin-bottom: 1.5rem;">—</p>
+                        
+                        <h4 style="color: var(--accent-blue); margin-bottom: 0.5rem;"><i class="fa-solid fa-newspaper"></i> News Impact</h4>
+                        <p id="deep-news-impact" style="line-height: 1.6; color: var(--text-muted); margin-bottom: 1.5rem;">—</p>
+                        
+                        <h4 style="color: var(--accent-green); margin-bottom: 0.5rem;"><i class="fa-solid fa-chart-line"></i> Fundamentals & Technicals</h4>
+                        <p id="deep-fundamentals" style="line-height: 1.6; color: var(--text-muted); margin-bottom: 0.5rem;">—</p>
+                        <p id="deep-technicals" style="line-height: 1.6; color: var(--text-muted); margin-bottom: 1.5rem;">—</p>
+                    </div>
+                    
+                    <div>
+                        <h4 style="margin-bottom: 1rem;"><i class="fa-solid fa-scale-balanced"></i> Probabilities</h4>
+                        <div style="margin-bottom: 1.5rem;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.2rem; font-size: 0.9rem;">
+                                <span style="color: var(--accent-green)">Bullish</span><span id="deep-prob-bull">0%</span>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.05); height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 0.8rem;">
+                                <div id="deep-bar-bull" style="background: var(--accent-green); height: 100%; width: 0%;"></div>
+                            </div>
+                            
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.2rem; font-size: 0.9rem;">
+                                <span style="color: var(--accent-red)">Bearish</span><span id="deep-prob-bear">0%</span>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.05); height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 0.8rem;">
+                                <div id="deep-bar-bear" style="background: var(--accent-red); height: 100%; width: 0%;"></div>
+                            </div>
+                            
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.2rem; font-size: 0.9rem;">
+                                <span style="color: var(--text-muted)">Neutral</span><span id="deep-prob-neutral">0%</span>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.05); height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 0.8rem;">
+                                <div id="deep-bar-neutral" style="background: var(--text-muted); height: 100%; width: 0%;"></div>
+                            </div>
+                        </div>
+                        
+                        <h4 style="color: var(--accent-red); margin-bottom: 0.5rem;"><i class="fa-solid fa-triangle-exclamation"></i> Risk Factors</h4>
+                        <ul id="deep-risk-factors" style="padding-left: 1rem; color: var(--text-muted); font-size: 0.9rem; line-height: 1.4;">
+                            <li>—</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 1.5rem; padding: 1rem; background: rgba(0,0,0,0.2); border-radius: 8px; border-left: 4px solid var(--accent-gold);">
+                    <h4 style="margin-bottom: 0.5rem;">Final Recommendation: <span id="deep-final-rec">HOLD</span></h4>
+                    <p id="deep-rec-justification" style="font-size: 0.95rem; color: var(--text-light);">—</p>
+                </div>
+            </div>
+
+            <!-- ═══ DEEP ANALYSIS PANEL (inside Stock Predictor) ═══ -->
+            <div id="stock-deep-analysis-card" class="card glass" style="display:none; margin-bottom:2rem;">
+                <div class="card-header" style="margin-bottom:1.5rem;">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <div style="width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;">
+                            <i class="fa-solid fa-magnifying-glass-chart" style="color:#fff;"></i>
+                        </div>
+                        <div>
+                            <h3 style="margin:0;">Deep Market Analysis</h3>
+                            <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">
+                                <span id="sda-symbol" style="font-weight:700;color:var(--accent-blue);"></span>
+                                &nbsp;·&nbsp; <span id="sda-updated"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <span id="sda-score" style="padding:4px 12px;border-radius:20px;font-size:0.85rem;">—/9</span>
+                        <span id="sda-rating" style="font-size:0.9rem;font-weight:700;"></span>
+                    </div>
+                </div>
+
+                <!-- Top 3-col grid: Trend | Levels | Patterns -->
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1rem;">
+                    <!-- Trend -->
+                    <div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:1rem;">
+                        <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:700;margin-bottom:8px;">
+                            <i class="fa-solid fa-arrow-trend-up"></i> Layer 1 — Structure
+                        </div>
+                        <div id="sda-trend" style="font-size:1.3rem;font-weight:800;margin-bottom:4px;">—</div>
+                        <div id="sda-trend-reason" style="font-size:0.78rem;color:var(--text-muted);line-height:1.4;">—</div>
+                        <div style="margin-top:8px;padding:4px 8px;background:rgba(255,255,255,0.04);border-radius:5px;font-size:0.76rem;color:var(--text-muted);">
+                            BOS: <span id="sda-bos" style="color:var(--accent-blue);">—</span>
+                        </div>
+                    </div>
+
+                    <!-- Levels -->
+                    <div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:1rem;">
+                        <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:700;margin-bottom:8px;">
+                            <i class="fa-solid fa-layer-group"></i> Layer 2 — Key Levels
+                        </div>
+                        <div style="font-size:1.2rem;font-weight:800;margin-bottom:8px;">₨ <span id="sda-price">—</span></div>
+                        <div style="font-size:0.78rem;margin-bottom:4px;">
+                            <span style="color:var(--bearish-red);">▲ Resist: </span><span id="sda-res" style="color:var(--text-light);">—</span>
+                        </div>
+                        <div style="font-size:0.78rem;">
+                            <span style="color:var(--bullish-green);">▼ Support: </span><span id="sda-sup" style="color:var(--text-light);">—</span>
+                        </div>
+                    </div>
+
+                    <!-- Patterns -->
+                    <div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:1rem;">
+                        <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:700;margin-bottom:8px;">
+                            <i class="fa-solid fa-shapes"></i> Layer 3 — Price Action
+                        </div>
+                        <div id="sda-pattern" style="margin-bottom:6px;">—</div>
+                        <div id="sda-pattern-desc" style="font-size:0.76rem;color:var(--text-muted);line-height:1.4;">—</div>
+                    </div>
+                </div>
+
+                <!-- Bottom 2-col: Indicators + Checklist -->
+                <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:1rem;">
+                    <!-- Indicators -->
+                    <div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:1rem;">
+                        <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:700;margin-bottom:12px;">Indicators</div>
+                        <div style="display:flex;flex-direction:column;gap:8px;">
+                            <div style="font-size:0.78rem;padding:6px 10px;border-radius:6px;background:rgba(255,255,255,0.04);">
+                                <span style="color:var(--text-muted);margin-right:6px;"><i class="fa-solid fa-chart-area"></i> Volume:</span>
+                                <span id="sda-volume" style="font-weight:600;">—</span>
+                                <div id="sda-vol-desc" style="color:var(--text-muted);font-size:0.73rem;margin-top:2px;">—</div>
+                            </div>
+                            <div style="font-size:0.78rem;padding:6px 10px;border-radius:6px;background:rgba(255,255,255,0.04);">
+                                <span style="color:var(--text-muted);"><i class="fa-solid fa-gauge-high"></i> RSI/Momentum:</span>
+                                <div id="sda-rsi" style="color:var(--text-light);margin-top:2px;">—</div>
+                            </div>
+                            <div style="font-size:0.78rem;padding:6px 10px;border-radius:6px;background:rgba(255,255,255,0.04);">
+                                <span style="color:var(--text-muted);"><i class="fa-solid fa-wave-square"></i> EMA Trend:</span>
+                                <div id="sda-ema" style="color:var(--text-light);margin-top:2px;">—</div>
+                            </div>
+                            <div style="font-size:0.78rem;padding:6px 10px;border-radius:6px;background:rgba(255,255,255,0.04);">
+                                <span style="color:var(--text-muted);"><i class="fa-solid fa-crosshairs"></i> VWAP:</span>
+                                <div id="sda-vwap" style="color:var(--text-light);margin-top:2px;">—</div>
+                            </div>
+                            <div style="font-size:0.78rem;padding:6px 10px;border-radius:6px;background:rgba(255,255,255,0.04);">
+                                <span style="color:var(--text-muted);"><i class="fa-solid fa-arrows-left-right"></i> ADX:</span>
+                                <div id="sda-adx" style="color:var(--text-light);margin-top:2px;">—</div>
+                            </div>
+                            <div style="font-size:0.78rem;padding:6px 10px;border-radius:6px;background:rgba(255,255,255,0.04);">
+                                <span style="color:var(--text-muted);"><i class="fa-solid fa-chart-simple"></i> Volatility:</span>
+                                <div id="sda-atr" style="color:var(--text-light);margin-top:2px;">—</div>
+                            </div>
+                            <div style="font-size:0.78rem;padding:6px 10px;border-radius:6px;background:rgba(255,255,255,0.04);">
+                                <span style="color:var(--text-muted);"><i class="fa-solid fa-building-columns"></i> Sector (NEPSE):</span>
+                                <div id="sda-sector" style="color:var(--text-light);margin-top:2px;">—</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Checklist -->
+                    <div style="background:rgba(0,0,0,0.2);border-radius:10px;padding:1rem;">
+                        <div style="font-size:0.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);font-weight:700;margin-bottom:8px;">Trade Checklist</div>
+                        <ul id="sda-checklist" style="list-style:none;padding:0;margin:0;"></ul>
+                    </div>
+                </div>
+            </div>
+            <!-- ══════════════════════════════════════════════ -->
+
+            <!-- Indicators + Metrics -->
+            <div class="bottom-grid">
+                <div class="card glass">
+                    <div class="card-header"><h3>Technical Indicators</h3></div>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:10px; padding: 10px 0;">
+                        
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">RSI (14)</div>
+                            <div id="ind-rsi" style="font-size:1.1rem; font-weight:700;">—</div>
+                        </div>
+
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">MACD</div>
+                            <div id="ind-macd" style="font-size:1.1rem; font-weight:700;">—</div>
+                        </div>
+
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">MACD Signal</div>
+                            <div id="ind-macd-sig" style="font-size:1.1rem; font-weight:700;">—</div>
+                        </div>
+
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">ADX (14)</div>
+                            <div id="ind-adx" style="font-size:1.1rem; font-weight:700;">—</div>
+                        </div>
+
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">ATR (14)</div>
+                            <div id="ind-atr" style="font-size:1.1rem; font-weight:700;">—</div>
+                        </div>
+
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">VWAP</div>
+                            <div id="ind-vwap" style="font-size:1.1rem; font-weight:700;">—</div>
+                        </div>
+
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Supertrend</div>
+                            <div id="ind-supertrend" style="font-size:1.1rem; font-weight:700;">—</div>
+                        </div>
+
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">CMF</div>
+                            <div id="ind-cmf" style="font-size:1.1rem; font-weight:700;">—</div>
+                        </div>
+
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Bollinger Mid</div>
+                            <div id="ind-bb-mid" style="font-size:1.1rem; font-weight:700;">—</div>
+                        </div>
+
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">Bollinger Width</div>
+                            <div id="ind-bb-width" style="font-size:1.1rem; font-weight:700;">—</div>
+                        </div>
+
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">OBV</div>
+                            <div id="ind-obv" style="font-size:1.1rem; font-weight:700;">—</div>
+                        </div>
+
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
+                            <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">EMA (20/50/200)</div>
+                            <div id="ind-ema" style="font-size:0.9rem; font-weight:700; margin-top:2px;">—</div>
+                        </div>
+
+                    </div>
+                </div>
+                <div class="card glass">
+                    <div class="card-header"><h3>Model Performance</h3></div>
+                    <div class="metrics-list">
+                        <div class="metric-row"><span>MAE</span><span class="metric-val" id="metric-mae">—</span></div>
+                        <div class="metric-row"><span>MAPE</span><span class="metric-val" id="metric-mape">—</span></div>
+                        <div class="metric-row"><span>Naive Baseline Acc</span><span class="metric-val" id="metric-baseline">—</span></div>
+                        <div class="metric-row highlight"><span>Directional Accuracy</span><span class="metric-val" id="metric-accuracy">—</span></div>
+                        <div class="metric-row highlight" style="background: rgba(59, 130, 246, 0.08);"><span>Skill Score (vs Naive)</span><span class="metric-val" id="metric-skill-score">—</span></div>
+                    </div>
+                    <div class="card-header" style="margin-top:1rem"><h3>Feature Importance</h3></div>
+                    <div class="chart-wrap-sm"><canvas id="featureChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Tab: Prediction History ───────────────────── -->
+        <div class="tab-panel" id="tab-history" style="display:none;">
+            <header class="page-header">
+                <div>
+                    <h1 class="page-title"><i class="fa-solid fa-clock-rotate-left accent"></i> Prediction History</h1>
+                    <p class="page-subtitle">Track how accurate your AI predictions are over time</p>
+                </div>
+            </header>
+
+            <!-- Overall Accuracy Stats -->
+            <div class="stats-banner glass" id="stats-banner">
+                <div class="stat-block">
+                    <div class="stat-num" id="stat-score">—</div>
+                    <div class="stat-lbl">Overall Score</div>
+                </div>
+                <div class="stat-divider"></div>
+                <div class="stat-block">
+                    <div class="stat-num green" id="stat-exact">—</div>
+                    <div class="stat-lbl">✅ Exact (&lt;0.5%)</div>
+                </div>
+                <div class="stat-block">
+                    <div class="stat-num gold" id="stat-close">—</div>
+                    <div class="stat-lbl">🟡 Close (&lt;2%)</div>
+                </div>
+                <div class="stat-block">
+                    <div class="stat-num red" id="stat-wrong">—</div>
+                    <div class="stat-lbl">❌ Wrong</div>
+                </div>
+                <div class="stat-divider"></div>
+                <div class="stat-block">
+                    <div class="stat-num accent" id="stat-dir-acc">—</div>
+                    <div class="stat-lbl">Direction Accuracy</div>
+                </div>
+                <div class="stat-block">
+                    <div class="stat-num" id="stat-avg-err">—</div>
+                    <div class="stat-lbl">Avg Error (pts)</div>
+                </div>
+                <div class="stat-block">
+                    <div class="stat-num" id="stat-pending">—</div>
+                    <div class="stat-lbl">⏳ Pending</div>
+                </div>
+            </div>
+
+            <!-- Per-Timeframe Accuracy Cards -->
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.25rem;">
+                <!-- Day Card -->
+                <div class="card glass" id="tf-card-1D" style="cursor:pointer;border:2px solid transparent;transition:all 0.25s;" onclick="switchHistoryTF('1D')">
+                    <div style="padding:1rem 1.25rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+                            <div style="display:flex;align-items:center;gap:0.5rem;">
+                                <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#1d4ed8);display:flex;align-items:center;justify-content:center;">
+                                    <i class="fa-solid fa-sun" style="color:#fff;font-size:0.9rem"></i>
+                                </div>
+                                <div>
+                                    <div style="font-weight:700;font-size:1rem;">Daily</div>
+                                    <div style="font-size:0.72rem;color:var(--text-muted);">1D predictions</div>
+                                </div>
+                            </div>
+                            <span class="badge-pill" id="tf-1D-count" style="background:rgba(59,130,246,0.15);color:#3b82f6;">0</span>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.4rem;text-align:center;">
+                            <div style="background:rgba(16,185,129,0.1);border-radius:8px;padding:0.4rem;">
+                                <div style="font-weight:700;color:#10b981;font-size:1rem;" id="tf-1D-exact">—</div>
+                                <div style="font-size:0.65rem;color:var(--text-muted);">✅ Exact</div>
+                            </div>
+                            <div style="background:rgba(245,158,11,0.1);border-radius:8px;padding:0.4rem;">
+                                <div style="font-weight:700;color:#f59e0b;font-size:1rem;" id="tf-1D-close">—</div>
+                                <div style="font-size:0.65rem;color:var(--text-muted);">🟡 Close</div>
+                            </div>
+                            <div style="background:rgba(239,68,68,0.1);border-radius:8px;padding:0.4rem;">
+                                <div style="font-weight:700;color:#ef4444;font-size:1rem;" id="tf-1D-wrong">—</div>
+                                <div style="font-size:0.65rem;color:var(--text-muted);">❌ Wrong</div>
+                            </div>
+                        </div>
+                        <div style="margin-top:0.75rem;display:flex;align-items:center;justify-content:space-between;">
+                            <div style="font-size:0.78rem;color:var(--text-muted);">Accuracy</div>
+                            <div style="font-weight:700;font-size:1rem;" id="tf-1D-acc">—</div>
+                        </div>
+                        <div style="margin-top:0.4rem;height:5px;background:rgba(255,255,255,0.06);border-radius:99px;overflow:hidden;">
+                            <div id="tf-1D-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#3b82f6,#10b981);border-radius:99px;transition:width 0.6s;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Week Card -->
+                <div class="card glass" id="tf-card-5D" style="cursor:pointer;border:2px solid transparent;transition:all 0.25s;" onclick="switchHistoryTF('5D')">
+                    <div style="padding:1rem 1.25rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+                            <div style="display:flex;align-items:center;gap:0.5rem;">
+                                <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#8b5cf6,#6d28d9);display:flex;align-items:center;justify-content:center;">
+                                    <i class="fa-solid fa-calendar-week" style="color:#fff;font-size:0.9rem"></i>
+                                </div>
+                                <div>
+                                    <div style="font-weight:700;font-size:1rem;">Weekly</div>
+                                    <div style="font-size:0.72rem;color:var(--text-muted);">5D predictions</div>
+                                </div>
+                            </div>
+                            <span class="badge-pill" id="tf-5D-count" style="background:rgba(139,92,246,0.15);color:#8b5cf6;">0</span>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.4rem;text-align:center;">
+                            <div style="background:rgba(16,185,129,0.1);border-radius:8px;padding:0.4rem;">
+                                <div style="font-weight:700;color:#10b981;font-size:1rem;" id="tf-5D-exact">—</div>
+                                <div style="font-size:0.65rem;color:var(--text-muted);">✅ Exact</div>
+                            </div>
+                            <div style="background:rgba(245,158,11,0.1);border-radius:8px;padding:0.4rem;">
+                                <div style="font-weight:700;color:#f59e0b;font-size:1rem;" id="tf-5D-close">—</div>
+                                <div style="font-size:0.65rem;color:var(--text-muted);">🟡 Close</div>
+                            </div>
+                            <div style="background:rgba(239,68,68,0.1);border-radius:8px;padding:0.4rem;">
+                                <div style="font-weight:700;color:#ef4444;font-size:1rem;" id="tf-5D-wrong">—</div>
+                                <div style="font-size:0.65rem;color:var(--text-muted);">❌ Wrong</div>
+                            </div>
+                        </div>
+                        <div style="margin-top:0.75rem;display:flex;align-items:center;justify-content:space-between;">
+                            <div style="font-size:0.78rem;color:var(--text-muted);">Accuracy</div>
+                            <div style="font-weight:700;font-size:1rem;" id="tf-5D-acc">—</div>
+                        </div>
+                        <div style="margin-top:0.4rem;height:5px;background:rgba(255,255,255,0.06);border-radius:99px;overflow:hidden;">
+                            <div id="tf-5D-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#8b5cf6,#10b981);border-radius:99px;transition:width 0.6s;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Month Card -->
+                <div class="card glass" id="tf-card-20D" style="cursor:pointer;border:2px solid transparent;transition:all 0.25s;" onclick="switchHistoryTF('20D')">
+                    <div style="padding:1rem 1.25rem;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+                            <div style="display:flex;align-items:center;gap:0.5rem;">
+                                <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#d97706);display:flex;align-items:center;justify-content:center;">
+                                    <i class="fa-solid fa-calendar-days" style="color:#fff;font-size:0.9rem"></i>
+                                </div>
+                                <div>
+                                    <div style="font-weight:700;font-size:1rem;">Monthly</div>
+                                    <div style="font-size:0.72rem;color:var(--text-muted);">20D predictions</div>
+                                </div>
+                            </div>
+                            <span class="badge-pill" id="tf-20D-count" style="background:rgba(245,158,11,0.15);color:#f59e0b;">0</span>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.4rem;text-align:center;">
+                            <div style="background:rgba(16,185,129,0.1);border-radius:8px;padding:0.4rem;">
+                                <div style="font-weight:700;color:#10b981;font-size:1rem;" id="tf-20D-exact">—</div>
+                                <div style="font-size:0.65rem;color:var(--text-muted);">✅ Exact</div>
+                            </div>
+                            <div style="background:rgba(245,158,11,0.1);border-radius:8px;padding:0.4rem;">
+                                <div style="font-weight:700;color:#f59e0b;font-size:1rem;" id="tf-20D-close">—</div>
+                                <div style="font-size:0.65rem;color:var(--text-muted);">🟡 Close</div>
+                            </div>
+                            <div style="background:rgba(239,68,68,0.1);border-radius:8px;padding:0.4rem;">
+                                <div style="font-weight:700;color:#ef4444;font-size:1rem;" id="tf-20D-wrong">—</div>
+                                <div style="font-size:0.65rem;color:var(--text-muted);">❌ Wrong</div>
+                            </div>
+                        </div>
+                        <div style="margin-top:0.75rem;display:flex;align-items:center;justify-content:space-between;">
+                            <div style="font-size:0.78rem;color:var(--text-muted);">Accuracy</div>
+                            <div style="font-weight:700;font-size:1rem;" id="tf-20D-acc">—</div>
+                        </div>
+                        <div style="margin-top:0.4rem;height:5px;background:rgba(255,255,255,0.06);border-radius:99px;overflow:hidden;">
+                            <div id="tf-20D-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#f59e0b,#10b981);border-radius:99px;transition:width 0.6s;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Prediction Log Card -->
+            <div class="card glass history-card">
+                <!-- Timeframe Tabs -->
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem 0;flex-wrap:wrap;gap:0.75rem;">
+                    <div style="display:flex;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;padding:3px;gap:2px;">
+                        <button class="hist-tf-btn active" id="htf-all" onclick="switchHistoryTF('all')" data-tf="all">
+                            <i class="fa-solid fa-layer-group"></i> All
+                        </button>
+                        <button class="hist-tf-btn" id="htf-1D" onclick="switchHistoryTF('1D')" data-tf="1D">
+                            <i class="fa-solid fa-sun"></i> Day (1D)
+                        </button>
+                        <button class="hist-tf-btn" id="htf-5D" onclick="switchHistoryTF('5D')" data-tf="5D">
+                            <i class="fa-solid fa-calendar-week"></i> Week (5D)
+                        </button>
+                        <button class="hist-tf-btn" id="htf-20D" onclick="switchHistoryTF('20D')" data-tf="20D">
+                            <i class="fa-solid fa-calendar-days"></i> Month (20D)
+                        </button>
+                    </div>
+                    <!-- Status filter pills -->
+                    <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center;">
+                        <span style="font-size:0.78rem;color:var(--text-muted);margin-right:2px;">Show:</span>
+                        <button class="hist-status-pill active" id="hsp-all" onclick="switchHistoryStatus('all')">All</button>
+                        <button class="hist-status-pill pending" id="hsp-pending" onclick="switchHistoryStatus('pending')">⏳ Pending</button>
+                        <button class="hist-status-pill exact" id="hsp-exact" onclick="switchHistoryStatus('exact')">✅ Exact</button>
+                        <button class="hist-status-pill close" id="hsp-close" onclick="switchHistoryStatus('close')">🟡 Close</button>
+                        <button class="hist-status-pill wrong" id="hsp-wrong" onclick="switchHistoryStatus('wrong')">❌ Wrong</button>
+                    </div>
+                </div>
+
+                <div class="card-header" style="padding-top:0.75rem;padding-bottom:0.75rem;border-top:1px solid rgba(255,255,255,0.05);margin-top:0.75rem;">
+                    <div style="display:flex;align-items:center;gap:0.75rem;">
+                        <h3 style="margin:0;">Prediction Log</h3>
+                        <span class="badge-pill" id="history-count">0 records</span>
+                    </div>
+                </div>
+
+                <div class="history-table-wrap">
+                    <table class="history-table" id="history-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Timeframe</th>
+                                <th>Made On</th>
+                                <th>For Date</th>
+                                <th>Prev Close</th>
+                                <th>Predicted</th>
+                                <th>Actual</th>
+                                <th>Diff (pts)</th>
+                                <th>Diff (%)</th>
+                                <th>Dir</th>
+                                <th>Result</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-tbody">
+                            <tr><td colspan="12" class="empty-row">No prediction history yet. Run the predictor to start tracking!</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- ── Tab: Analysis ────────────────────────── -->
+    <div class="tab-panel" id="tab-analysis" style="display:none; padding: 20px;">
+        <header class="page-header">
+            <div>
+                <h1 class="page-title"><i class="fa-solid fa-magnifying-glass-chart accent"></i> 7-Layer Professional Analysis</h1>
+                <p class="page-subtitle" id="analysis-subtitle">Comprehensive technical breakdown for trading setup</p>
+            </div>
+            <div class="date-badge"><i class="fa-regular fa-calendar"></i> <span id="current-date-analysis">—</span></div>
+        </header>
+
+        <div class="analysis-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+            <!-- Left Column: Layers 1-6 -->
+            <div class="analysis-main" style="display: flex; flex-direction: column; gap: 20px;">
+                
+                <!-- Layer 1: Structure -->
+                <div class="card glass">
+                    <div class="card-header"><h3>Layer 1: Market Structure</h3></div>
+                    <div class="card-body" style="padding: 15px;">
+                        <div style="font-size: 1.2rem; margin-bottom: 10px;">Trend: <strong id="an-trend">—</strong></div>
+                        <p id="an-trend-reason" style="color: var(--text-muted); font-size: 0.9rem;">—</p>
+                    </div>
+                </div>
+
+                <!-- Layer 2: Key Levels -->
+                <div class="card glass">
+                    <div class="card-header"><h3>Layer 2: Key Levels</h3></div>
+                    <div class="card-body" style="padding: 15px;">
+                        <div style="margin-bottom: 10px;">Current Price: <strong id="an-price">—</strong></div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div style="background: rgba(239,68,68,0.1); padding: 10px; border-radius: 8px;">
+                                <div style="color: var(--bearish-red); font-size: 0.8rem; text-transform: uppercase;">Resistance</div>
+                                <div id="an-res" style="font-weight: bold; font-size: 1.1rem;">—</div>
+                            </div>
+                            <div style="background: rgba(16,185,129,0.1); padding: 10px; border-radius: 8px;">
+                                <div style="color: var(--bullish-green); font-size: 0.8rem; text-transform: uppercase;">Support</div>
+                                <div id="an-sup" style="font-weight: bold; font-size: 1.1rem;">—</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Layer 3-6 combined grid -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="card glass">
+                        <div class="card-header"><h3>Layer 3: Price Action</h3></div>
+                        <div class="card-body" style="padding: 15px;">
+                            <strong id="an-candle">—</strong>
+                            <p id="an-candle-desc" style="color: var(--text-muted); font-size: 0.85rem; margin-top: 5px;">—</p>
+                        </div>
+                    </div>
+                    <div class="card glass">
+                        <div class="card-header"><h3>Layer 4: Volume</h3></div>
+                        <div class="card-body" style="padding: 15px;">
+                            <strong id="an-vol">—</strong>
+                            <p id="an-vol-desc" style="color: var(--text-muted); font-size: 0.85rem; margin-top: 5px;">—</p>
+                        </div>
+                    </div>
+                    <div class="card glass">
+                        <div class="card-header"><h3>Layer 5: Trend (ADX/EMA)</h3></div>
+                        <div class="card-body" style="padding: 15px;">
+                            <strong id="an-adx">—</strong>
+                            <p id="an-adx-desc" style="color: var(--text-muted); font-size: 0.85rem; margin-top: 5px;">—</p>
+                        </div>
+                    </div>
+                    <div class="card glass">
+                        <div class="card-header"><h3>Layer 6: Momentum (RSI)</h3></div>
+                        <div class="card-body" style="padding: 15px;">
+                            <strong id="an-rsi">—</strong>
+                            <p id="an-rsi-desc" style="color: var(--text-muted); font-size: 0.85rem; margin-top: 5px;">—</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Checklist & Score -->
+            <div class="analysis-side" style="display: flex; flex-direction: column; gap: 20px;">
+                <div class="card glass">
+                    <div class="card-header"><h3>Trade Checklist</h3></div>
+                    <div class="card-body" style="padding: 0;">
+                        <ul id="checklist-ul" style="list-style: none; padding: 0; margin: 0;">
+                            <li style="padding: 15px; text-align: center; color: var(--text-muted);">Run analysis to view checklist</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="card glass" style="text-align: center; padding: 30px 15px;">
+                    <div style="font-size: 0.9rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 1px;">Overall Score</div>
+                    <div id="an-score" style="font-size: 3.5rem; font-weight: 800; line-height: 1; margin: 10px 0; color: #fff;">—</div>
+                    <div id="an-rating" style="display: inline-block; padding: 6px 16px; border-radius: 20px; font-weight: 600; font-size: 0.9rem; margin-bottom: 15px; background: rgba(255,255,255,0.1);">PENDING</div>
+                    <p id="an-advice" style="color: var(--text-muted); font-size: 0.9rem;">—</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Live AI Assistant Chat UI ────────────────── -->
+<button class="chat-fab" id="chat-fab" onclick="toggleChat()">
+    <i class="fa-solid fa-robot"></i>
+</button>
+
+<div class="chat-panel glass" id="chat-panel" style="display:none;">
+    <div class="chat-header">
+        <div class="chat-header-info">
+            <i class="fa-solid fa-robot" style="color: var(--accent-blue);"></i>
+            <div>
+                <h4>Live AI Assistant</h4>
+                <span>Real-time Market Analyst</span>
+            </div>
+        </div>
+        <button class="chat-close" onclick="toggleChat()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    
+    <div class="chat-messages" id="chat-messages">
+        <div class="chat-msg ai">
+            <div class="msg-bubble">
+                Hello! I am your live market assistant. I can pull real-time data and analyze any stock or index for you. What would you like to know?
+            </div>
+        </div>
+    </div>
+    
+    <div class="chat-input-area">
+        <input type="text" id="chat-input" placeholder="E.g. Analyze NLIC..." onkeypress="handleChatKey(event)">
+        <button class="chat-send" onclick="sendChatMessage()">
+            <i class="fa-solid fa-paper-plane"></i>
+        </button>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="loading-overlay" style="display:none;">
+    <div class="loader-box glass">
+        <div class="loader-ring"></div>
+        <h3 id="loader-title">Processing...</h3>
+        <p id="loader-desc">Please wait while the AI models run.</p>
+        <div class="loader-progress">
+            <div class="loader-bar" id="loader-bar"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Resolve Modal -->
+<div class="modal-overlay" id="resolve-modal" style="display:none;" onclick="closeModal()">
+    <div class="modal glass" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <h3>Grade This Prediction</h3>
+            <button class="modal-close" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div id="modal-pred-info" class="modal-info"></div>
+        <div class="form-group">
+            <label>Actual NEPSE Close (Points)</label>
+            <input type="number" id="modal-actual-input" step="0.01" placeholder="Enter actual close price...">
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitModalResolve()">
+                <i class="fa-solid fa-check"></i> Grade It
+            </button>
+        </div>
+        <input type="hidden" id="modal-pred-date">
+    </div>
+</div>
+
+<script src="app.js?v=2"></script>
+</body>
+</html>

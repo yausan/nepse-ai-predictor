@@ -1,0 +1,10 @@
+pandas
+numpy
+scikit-learn
+xgboost
+beautifulsoup4
+selenium
+curl_cffi
+python-dotenv
+google-generativeai
+yfinance

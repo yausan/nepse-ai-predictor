@@ -1,0 +1,8 @@
+__pycache__/
+venv/
+env/
+.env
+*.pyc
+outputs/history/prediction_history.json
+outputs/predictions/*.json
+.DS_Store

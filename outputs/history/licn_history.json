@@ -1,0 +1,17 @@
+[
+  {
+    "run_at": "2026-06-30 05:36:51",
+    "current_price": 798.6,
+    "current_date": "2026-06-29",
+    "prediction_date": "2026-06-30",
+    "predicted_close": 808.8702253513146,
+    "predicted_change_pct": 1.2860287191728765,
+    "direction": "UP",
+    "confidence": 0.8256488225460052,
+    "signal": "HOLD",
+    "mae": 10.45534235533743,
+    "snapshot_file": "predictions/licn_2026-06-30_20260630_053651.json",
+    "actual_close": null,
+    "was_correct": null
+  }
+]
