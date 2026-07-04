@@ -2,6 +2,8 @@ import os
 import sys
 import json
 import time
+import threading
+import uuid
 import subprocess
 import http.server
 import socketserver
@@ -12,6 +14,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 PORT = int(os.environ.get("PORT", 8080))
+
+# ── Background Job Registry ───────────────────────────────────────────────
+# Stores all running / completed job states in memory.
+# { job_id: { status, progress, message, result, error, created_at } }
+JOB_REGISTRY = {}
+JOB_LOCK     = threading.Lock()
 
 class NEPSEPredictorHandler(http.server.SimpleHTTPRequestHandler):
 
@@ -35,6 +43,12 @@ class NEPSEPredictorHandler(http.server.SimpleHTTPRequestHandler):
                 "/api/stock/history":   self.handle_stock_history,
                 "/api/analysis":        self.handle_analysis,
             }
+
+            # Dynamic job-status route: /api/jobs/<job_id>
+            if path.startswith("/api/jobs/"):
+                job_id = path[len("/api/jobs/"):]
+                self.handle_job_status(job_id)
+                return
 
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] RECEIVED GET: {path}")
             if path in routes:
@@ -68,6 +82,8 @@ class NEPSEPredictorHandler(http.server.SimpleHTTPRequestHandler):
                 self.handle_history_delete(payload)
             elif path == "/api/chat":
                 self.handle_chat(payload)
+            elif path == "/api/jobs/start":
+                self.handle_job_start(payload)
             else:
                 self.send_json_response(404, {"error": "Not Found"})
         except Exception as e:
@@ -109,74 +125,45 @@ class NEPSEPredictorHandler(http.server.SimpleHTTPRequestHandler):
             "nepse_last_predicted": time_modified_str(nepse_ts_file) if nepse_ts_file else "Never",
         })
 
-    # ── Stock Predict ────────────────────────────────────────────────────
+    # ── Stock Predict (legacy – now delegates to job system) ─────────────
     def handle_predict(self, qp):
         symbol = qp.get("symbol", ["LICN"])[0].upper()
-        print(f"\n[API] Retraining stock model for {symbol}...")
-        result = self._run_script(["train_model.py", "--symbol", symbol], timeout=600)
-        if result["ok"]:
-            pred_file = os.path.join("outputs", "predictions", f"{symbol.lower()}_predictions.json")
-            if os.path.exists(pred_file):
-                with open(pred_file) as f:
-                    self.send_json_response(200, {"status": "success", "data": json.load(f)})
-            else:
-                self.send_json_response(500, {"status": "error", "message": "Prediction file not generated."})
-        else:
-            self.send_json_response(500, {"status": "error", "message": result["stderr"]})
+        steps  = [
+            ("Loading historical data…",    ["train_model.py", "--symbol", symbol], 600),
+        ]
+        job_id = self._start_job(steps, job_type="predict", symbol=symbol)
+        # Block until done so old callers still get the result synchronously
+        self._wait_for_job_and_respond(job_id, "outputs/predictions", f"{symbol.lower()}_predictions.json")
 
-    # ── Stock Update + Predict ───────────────────────────────────────────
+    # ── Stock Update + Predict (legacy – now delegates to job system) ────
     def handle_update(self, qp):
         symbol    = qp.get("symbol", ["LICN"])[0].upper()
         full_sync = qp.get("full", ["false"])[0].lower() == "true"
         pages     = "all" if full_sync else "1"
-        print(f"\n[API] Scraping {symbol} (pages={pages}) then retraining...")
+        steps = [
+            ("Scraping latest price data from Merolagani…", ["update_data.py", "--symbol", symbol, "--pages", pages], 600),
+            ("Training XGBoost model and generating predictions…",  ["train_model.py", "--symbol", symbol], 600),
+        ]
+        job_id = self._start_job(steps, job_type="update", symbol=symbol)
+        self._wait_for_job_and_respond(job_id, "outputs/predictions", f"{symbol.lower()}_predictions.json")
 
-        self._run_script(["update_data.py", "--symbol", symbol, "--pages", pages], timeout=600)
-        result = self._run_script(["train_model.py", "--symbol", symbol], timeout=600)
-
-        if result["ok"]:
-            pred_file = os.path.join("outputs", "predictions", f"{symbol.lower()}_predictions.json")
-            if os.path.exists(pred_file):
-                with open(pred_file) as f:
-                    self.send_json_response(200, {"status": "success", "data": json.load(f)})
-            else:
-                self.send_json_response(500, {"status": "error", "message": "Prediction file not generated."})
-        else:
-            self.send_json_response(500, {"status": "error", "message": result["stderr"]})
-
-    # ── NEPSE Index: Scrape + Predict ────────────────────────────────────
+    # ── NEPSE Index: Scrape + Predict (legacy) ───────────────────────────
     def handle_nepse_update(self, qp):
         pages = qp.get("pages", ["3"])[0]
-        print(f"\n[API] Scraping NEPSE Index (pages={pages})...")
-        self._run_script(["scrape_nepse.py", "--pages", pages], timeout=600)
+        steps = [
+            (f"Scraping NEPSE index data ({pages} pages)…", ["scrape_nepse.py", "--pages", pages], 600),
+            ("Training NEPSE index prediction model…",       ["predict_nepse.py"], 300),
+        ]
+        job_id = self._start_job(steps, job_type="nepse_update", symbol="NEPSE")
+        self._wait_for_job_and_respond(job_id, "outputs/predictions", "nepse_predictions.json")
 
-        print("[API] Training NEPSE index model...")
-        result = self._run_script(["predict_nepse.py"], timeout=300)
-
-        if result["ok"] and os.path.exists(os.path.join("outputs", "predictions", "nepse_predictions.json")):
-            with open(os.path.join("outputs", "predictions", "nepse_predictions.json")) as f:
-                self.send_json_response(200, {"status": "success", "data": json.load(f)})
-        else:
-            # Try to just run predict on whatever data exists
-            result2 = self._run_script(["predict_nepse.py"], timeout=300)
-            if result2["ok"] and os.path.exists(os.path.join("outputs", "predictions", "nepse_predictions.json")):
-                with open(os.path.join("outputs", "predictions", "nepse_predictions.json")) as f:
-                    self.send_json_response(200, {"status": "success", "data": json.load(f)})
-            else:
-                self.send_json_response(500, {
-                    "status": "error",
-                    "message": result["stderr"] or "NEPSE data not available. Please scrape data first."
-                })
-
-    # ── NEPSE Index: Predict only ────────────────────────────────────────
+    # ── NEPSE Index: Predict only (legacy) ──────────────────────────────
     def handle_nepse_predict(self, _qp):
-        print("\n[API] Running NEPSE Index prediction (no scrape)...")
-        result = self._run_script(["predict_nepse.py"], timeout=300)
-        if result["ok"] and os.path.exists(os.path.join("outputs", "predictions", "nepse_predictions.json")):
-            with open(os.path.join("outputs", "predictions", "nepse_predictions.json")) as f:
-                self.send_json_response(200, {"status": "success", "data": json.load(f)})
-        else:
-            self.send_json_response(500, {"status": "error", "message": result["stderr"] or "No NEPSE data found."})
+        steps = [
+            ("Running NEPSE index prediction model…", ["predict_nepse.py"], 300),
+        ]
+        job_id = self._start_job(steps, job_type="nepse_predict", symbol="NEPSE")
+        self._wait_for_job_and_respond(job_id, "outputs/predictions", "nepse_predictions.json")
 
     # ── History: Get all NEPSE history ──────────────────────────────────
     def handle_history(self, qp):
@@ -343,20 +330,169 @@ class NEPSEPredictorHandler(http.server.SimpleHTTPRequestHandler):
             "remaining": len(history)
         })
 
-    # ── Analysis: 7-Layer Engine ──────────────────────────────────────────
+    # ── Analysis: 7-Layer Engine (legacy – delegates to job system) ──────
     def handle_analysis(self, qp):
         symbol = qp.get("symbol", ["LICN"])[0].upper()
-        print(f"\n[API] Running 7-layer analysis for {symbol}...")
-        result = self._run_script(["analysis.py", "--symbol", symbol], timeout=600)
-        if result["ok"]:
-            analysis_file = os.path.join("outputs", "analysis", f"{symbol.lower()}_analysis.json")
-            if os.path.exists(analysis_file):
-                with open(analysis_file) as f:
-                    self.send_json_response(200, {"status": "success", "data": json.load(f)})
-            else:
-                self.send_json_response(500, {"status": "error", "message": "Analysis file not generated."})
+        steps  = [
+            ("Running 7-layer market structure analysis…", ["analysis.py", "--symbol", symbol], 600),
+        ]
+        job_id = self._start_job(steps, job_type="analyse", symbol=symbol)
+        self._wait_for_job_and_respond(job_id, "outputs/analysis", f"{symbol.lower()}_analysis.json")
+
+    # ── Job: Status poll endpoint ─────────────────────────────────────────
+    def handle_job_status(self, job_id):
+        with JOB_LOCK:
+            job = JOB_REGISTRY.get(job_id)
+        if job is None:
+            self.send_json_response(404, {"error": "Job not found"})
+            return
+        self.send_json_response(200, job)
+
+    # ── Job: Start endpoint ───────────────────────────────────────────────
+    def handle_job_start(self, payload):
+        job_type = payload.get("type", "predict")
+        symbol   = payload.get("symbol", "LICN").upper()
+        pages    = payload.get("pages", "3")
+        full     = payload.get("full", False)
+
+        if job_type == "predict":
+            steps = [
+                ("Loading historical CSV data…",                      ["train_model.py", "--symbol", symbol], 600),
+            ]
+        elif job_type == "update":
+            p = "all" if full else "1"
+            steps = [
+                ("Scraping latest price data from Merolagani…",        ["update_data.py", "--symbol", symbol, "--pages", p], 600),
+                ("Training XGBoost and generating AI predictions…",    ["train_model.py", "--symbol", symbol], 600),
+            ]
+        elif job_type == "nepse_update":
+            steps = [
+                (f"Scraping NEPSE index ({pages} pages)…",             ["scrape_nepse.py", "--pages", str(pages)], 600),
+                ("Training NEPSE index prediction model…",              ["predict_nepse.py"], 300),
+            ]
+        elif job_type == "nepse_predict":
+            steps = [
+                ("Running NEPSE index prediction model…",               ["predict_nepse.py"], 300),
+            ]
+        elif job_type == "analyse":
+            steps = [
+                ("Running 7-layer market structure analysis…",          ["analysis.py", "--symbol", symbol], 600),
+            ]
         else:
-            self.send_json_response(500, {"status": "error", "message": result["stderr"] or "Analysis failed."})
+            self.send_json_response(400, {"error": f"Unknown job type: {job_type}"})
+            return
+
+        job_id = self._start_job(steps, job_type=job_type, symbol=symbol)
+        self.send_json_response(200, {"job_id": job_id, "status": "started"})
+
+    # ── Internal: start a background job ─────────────────────────────────
+    def _start_job(self, steps, job_type="generic", symbol=""):
+        job_id = str(uuid.uuid4())[:8]
+        with JOB_LOCK:
+            JOB_REGISTRY[job_id] = {
+                "status":     "running",
+                "progress":   0,
+                "message":    "Initialising…",
+                "result":     None,
+                "error":      None,
+                "job_type":   job_type,
+                "symbol":     symbol,
+                "created_at": datetime.now().isoformat(),
+            }
+        t = threading.Thread(
+            target=self._run_job_steps,
+            args=(job_id, steps, job_type, symbol),
+            daemon=True,
+        )
+        t.start()
+        print(f"[JOB {job_id}] Started: type={job_type}, symbol={symbol}")
+        return job_id
+
+    # ── Internal: run steps sequentially, update registry ────────────────
+    def _run_job_steps(self, job_id, steps, job_type, symbol):
+        total = len(steps)
+        try:
+            for i, step in enumerate(steps):
+                label, script_args, timeout = step
+                progress = int((i / total) * 85) + 5   # 5% → 90%
+                with JOB_LOCK:
+                    JOB_REGISTRY[job_id]["progress"] = progress
+                    JOB_REGISTRY[job_id]["message"]  = label
+                print(f"[JOB {job_id}] Step {i+1}/{total}: {label}")
+
+                r = subprocess.run(
+                    [sys.executable] + script_args,
+                    capture_output=True, text=True, timeout=timeout,
+                )
+                if r.stdout:
+                    print(r.stdout[-2000:])
+                if r.returncode != 0:
+                    err = r.stderr[-1000:] if r.stderr else "Unknown error"
+                    print(f"[JOB {job_id}] Step failed: {err}")
+                    with JOB_LOCK:
+                        JOB_REGISTRY[job_id]["status"]   = "error"
+                        JOB_REGISTRY[job_id]["progress"] = 100
+                        JOB_REGISTRY[job_id]["message"]  = f"Error in step {i+1}: {label}"
+                        JOB_REGISTRY[job_id]["error"]    = err
+                    return
+
+            # All steps done — load result file
+            with JOB_LOCK:
+                JOB_REGISTRY[job_id]["progress"] = 95
+                JOB_REGISTRY[job_id]["message"]  = "Saving results…"
+
+            result_data = self._load_result(job_type, symbol)
+
+            with JOB_LOCK:
+                JOB_REGISTRY[job_id]["status"]   = "done"
+                JOB_REGISTRY[job_id]["progress"] = 100
+                JOB_REGISTRY[job_id]["message"]  = "Complete!"
+                JOB_REGISTRY[job_id]["result"]   = result_data
+            print(f"[JOB {job_id}] Completed successfully.")
+
+        except subprocess.TimeoutExpired:
+            with JOB_LOCK:
+                JOB_REGISTRY[job_id]["status"]  = "error"
+                JOB_REGISTRY[job_id]["progress"] = 100
+                JOB_REGISTRY[job_id]["message"] = "Script timed out."
+                JOB_REGISTRY[job_id]["error"]   = "Script timed out."
+        except Exception as e:
+            print(f"[JOB {job_id}] Unexpected error: {e}")
+            with JOB_LOCK:
+                JOB_REGISTRY[job_id]["status"]  = "error"
+                JOB_REGISTRY[job_id]["progress"] = 100
+                JOB_REGISTRY[job_id]["message"] = f"Unexpected error: {e}"
+                JOB_REGISTRY[job_id]["error"]   = str(e)
+
+    # ── Internal: load result JSON for a completed job ────────────────────
+    def _load_result(self, job_type, symbol):
+        if job_type in ("predict", "update"):
+            path = os.path.join("outputs", "predictions", f"{symbol.lower()}_predictions.json")
+        elif job_type in ("nepse_update", "nepse_predict"):
+            path = os.path.join("outputs", "predictions", "nepse_predictions.json")
+        elif job_type == "analyse":
+            path = os.path.join("outputs", "analysis", f"{symbol.lower()}_analysis.json")
+        else:
+            return None
+        if os.path.exists(path):
+            with open(path) as f:
+                return json.load(f)
+        return None
+
+    # ── Internal: block until job done, then send HTTP response ──────────
+    # Used only by legacy blocking routes for backward compatibility.
+    def _wait_for_job_and_respond(self, job_id, output_folder, filename):
+        while True:
+            time.sleep(1)
+            with JOB_LOCK:
+                job = JOB_REGISTRY.get(job_id, {})
+            if job.get("status") in ("done", "error"):
+                break
+        if job.get("status") == "done" and job.get("result"):
+            self.send_json_response(200, {"status": "success", "data": job["result"]})
+        else:
+            err = job.get("error", "Unknown error")
+            self.send_json_response(500, {"status": "error", "message": err})
 
     # ── Chat: Live AI Assistant ──────────────────────────────────────────
     def handle_chat(self, payload):

@@ -219,47 +219,32 @@ async function fetchStatus() {
 // ─────────────────────────────────────────────────────
 async function triggerNepseUpdate() {
     const pages = document.getElementById('nepse-pages-select')?.value || '3';
-    showLoader('Analyzing Market Depth...', `Aggregating live exchange data, institutional footprints, and broader macroeconomic sentiment across NEPSE (${pages} cycles).`);
-    setButtonsDisabled(true);
-
-    try {
-        const res  = await fetch(`/api/nepse/update?pages=${pages}`);
-        const data = await res.json();
-        if (data.status === 'success') {
-            updateNepseDashboard(data.data);
+    await pollJobProgress({
+        type:    'nepse_update',
+        symbol:  'NEPSE',
+        pages,
+        title:   'Analyzing Market Depth…',
+        desc:    `Aggregating live exchange data, institutional footprints, and broader macroeconomic sentiment across NEPSE (${pages} cycles).`,
+        onDone:  (result) => {
+            if (result) updateNepseDashboard(result);
             fetchStatus();
-            await loadHistory();
-        } else {
-            showError(data.message || 'Update failed. Check if NEPSE data is available.');
-        }
-    } catch (e) {
-        showError(`Network error: ${e.message}`);
-    } finally {
-        hideLoader();
-        setButtonsDisabled(false);
-    }
+            loadHistory();
+        },
+    });
 }
 
 async function triggerNepsePredict() {
-    showLoader('Synthesizing Forecast...', 'Computing historical price action against macro indicators to construct a high-probability directional forecast for the NEPSE index.');
-    setButtonsDisabled(true);
-
-    try {
-        const res  = await fetch('/api/nepse/predict');
-        const data = await res.json();
-        if (data.status === 'success') {
-            updateNepseDashboard(data.data);
+    await pollJobProgress({
+        type:    'nepse_predict',
+        symbol:  'NEPSE',
+        title:   'Synthesizing Forecast…',
+        desc:    'Computing historical price action against macro indicators to construct a high-probability directional forecast for the NEPSE index.',
+        onDone:  (result) => {
+            if (result) updateNepseDashboard(result);
             fetchStatus();
-            await loadHistory();
-        } else {
-            showError(data.message || 'No NEPSE data found. Click "Update & Predict" to scrape live data first.');
-        }
-    } catch (e) {
-        showError(`Network error: ${e.message}`);
-    } finally {
-        hideLoader();
-        setButtonsDisabled(false);
-    }
+            loadHistory();
+        },
+    });
 }
 
 // Try to load existing NEPSE prediction on startup
@@ -278,58 +263,115 @@ async function tryLoadNepsePrediction() {
 // ─────────────────────────────────────────────────────
 async function triggerStockUpdate() {
     const sym = getSymbol();
-    showLoader(`Synchronizing ${sym}...`, `Fetching real-time market data, detecting anomalous volume spikes, and recalculating structural order blocks for ${sym}.`);
-    setButtonsDisabled(true);
-    try {
-        const res  = await fetch(`/api/update?symbol=${sym}&full=false`);
-        const data = await res.json();
-        if (data.status === 'success') {
-            updateStockDashboard(data.data);
+    await pollJobProgress({
+        type:    'update',
+        symbol:  sym,
+        full:    false,
+        title:   `Synchronizing ${sym}…`,
+        desc:    `Fetching real-time market data, detecting anomalous volume spikes, and recalculating structural order blocks for ${sym}.`,
+        onDone:  (result) => {
+            if (result) updateStockDashboard(result);
             fetchStatus();
             localStorage.setItem('active_symbol', sym);
-        } else {
-            showError(data.message || 'Stock update failed.');
-        }
-    } catch (e) {
-        showError(`Network error: ${e.message}`);
-    } finally {
-        hideLoader();
-        setButtonsDisabled(false);
-    }
+        },
+    });
 }
 
 async function triggerStockTrain() {
     const sym = getSymbol();
-    showLoader(`Deep Intelligence: ${sym}`, `Executing proprietary multi-layer analysis. Evaluating smart money concepts, liquidity zones, and volatility metrics to generate high-conviction intelligence.`);
-    setButtonsDisabled(true);
-    try {
-        const res  = await fetch(`/api/predict?symbol=${sym}`);
-        const data = await res.json();
-        if (data.status === 'success') {
-            updateStockDashboard(data.data);
+    await pollJobProgress({
+        type:    'predict',
+        symbol:  sym,
+        title:   `Deep Intelligence: ${sym}`,
+        desc:    'Executing proprietary multi-layer analysis. Evaluating smart money concepts, liquidity zones, and volatility metrics to generate high-conviction intelligence.',
+        onDone:  async (result) => {
+            if (result) updateStockDashboard(result);
             fetchStatus();
-            // Load and render the deep analysis inside the predictor
             await loadAndRenderDeepAnalysis(sym);
-            // Now unlock the Predict button
+            // Unlock the Predict button
             const predictBtn = document.getElementById('btn-update-inner');
             if (predictBtn) {
                 predictBtn.disabled = false;
                 predictBtn.style.opacity = '1';
-                predictBtn.style.cursor = 'pointer';
+                predictBtn.style.cursor  = 'pointer';
                 predictBtn.title = '';
             }
             localStorage.setItem(`analysed_${sym}`, '1');
-        } else {
-            showError(data.message || 'Stock retrain failed.');
+        },
+    });
+}
+
+// ─────────────────────────────────────────────────────
+//  BACKGROUND JOB POLLING
+// ─────────────────────────────────────────────────────
+/**
+ * Kicks off a background job, shows the animated progress overlay,
+ * polls every 2 s, and calls onDone(result) when the job completes.
+ * @param {object} opts  { type, symbol, pages, full, title, desc, onDone }
+ */
+async function pollJobProgress(opts) {
+    const { type, symbol, pages, full, title, desc, onDone } = opts;
+
+    showLoader(title, desc);
+    updateLoaderProgress(5, 'Starting job on server…');
+    setButtonsDisabled(true);
+
+    let job_id;
+    try {
+        const startRes = await fetch('/api/jobs/start', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ type, symbol, pages, full }),
+        });
+        const startData = await startRes.json();
+        if (!startData.job_id) {
+            showError(startData.error || 'Failed to start job.');
+            setButtonsDisabled(false);
+            return;
         }
+        job_id = startData.job_id;
     } catch (e) {
-        showError(`Network error: ${e.message}`);
-    } finally {
-        hideLoader();
+        showError(`Could not reach server: ${e.message}`);
         setButtonsDisabled(false);
-        // Keep Predict disabled if analysis was never run for this symbol
-        checkPredictLock();
+        return;
     }
+
+    // Poll every 2 seconds
+    return new Promise((resolve) => {
+        const interval = setInterval(async () => {
+            try {
+                const res  = await fetch(`/api/jobs/${job_id}`);
+                const job  = await res.json();
+
+                updateLoaderProgress(job.progress || 0, job.message || '…');
+
+                if (job.status === 'done') {
+                    clearInterval(interval);
+                    hideLoader();
+                    setButtonsDisabled(false);
+                    checkPredictLock();
+                    try { await onDone(job.result); } catch (_) {}
+                    resolve();
+                } else if (job.status === 'error') {
+                    clearInterval(interval);
+                    hideLoader();
+                    setButtonsDisabled(false);
+                    showError(job.error || 'The job encountered an error.');
+                    resolve();
+                }
+            } catch (e) {
+                // Network hiccup — keep polling silently
+                console.warn('[poll] Network hiccup, retrying…', e.message);
+            }
+        }, 2000);
+    });
+}
+
+/** Updates the loader progress bar and step label. */
+function updateLoaderProgress(pct, message) {
+    const bar = document.getElementById('loader-bar');
+    if (bar) bar.style.width = `${Math.min(pct, 100)}%`;
+    setIfExists('loader-desc', message);
 }
 
 function checkPredictLock() {
@@ -997,25 +1039,16 @@ function renderHistory() {
 // ─────────────────────────────────────────────────────
 async function triggerAnalysis() {
     const sym = getSymbol();
-    showLoader(`Analyzing ${sym}...`, `Deploying advanced neural networks to map market structure, liquidity voids, and momentum divergences for ${sym}.`);
-    const btn = document.getElementById('btn-run-analysis');
-    if (btn) btn.disabled = true;
-
-    try {
-        const res  = await fetch(`/api/analysis?symbol=${sym}`);
-        const data = await res.json();
-        if (data.status === 'success') {
-            updateAnalysisDashboard(data.data);
+    await pollJobProgress({
+        type:    'analyse',
+        symbol:  sym,
+        title:   `Analyzing ${sym}…`,
+        desc:    `Deploying advanced neural networks to map market structure, liquidity voids, and momentum divergences for ${sym}.`,
+        onDone:  (result) => {
+            if (result) updateAnalysisDashboard(result);
             fetchStatus();
-        } else {
-            showError(data.message || 'Analysis failed. Check if data is available.');
-        }
-    } catch (e) {
-        showError(`Network error: ${e.message}`);
-    } finally {
-        hideLoader();
-        if (btn) btn.disabled = false;
-    }
+        },
+    });
 }
 
 async function tryLoadAnalysisPrediction(sym) {
