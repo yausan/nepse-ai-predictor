@@ -457,11 +457,14 @@ def time_modified_str(filepath):
     return datetime.fromtimestamp(os.path.getmtime(filepath)).strftime("%Y-%m-%d %H:%M:%S")
 
 
+class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    pass
+
 def main():
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    socketserver.TCPServer.allow_reuse_address = True
+    ThreadedTCPServer.allow_reuse_address = True
 
-    with socketserver.TCPServer(("0.0.0.0", PORT), NEPSEPredictorHandler) as httpd:
+    with ThreadedTCPServer(("0.0.0.0", PORT), NEPSEPredictorHandler) as httpd:
         print(f"\n{'='*55}")
         print(f"  NEPSE AI Prediction Dashboard — Server Active")
         print(f"  Port    : {PORT}")
