@@ -19,27 +19,31 @@ class NEPSEPredictorHandler(http.server.SimpleHTTPRequestHandler):
         sys.stdout.write(f"[{self.log_date_time_string()}] {format % args}\n")
 
     def do_GET(self):
-        parsed_url  = urlparse(self.path)
-        path        = parsed_url.path
-        query_params = parse_qs(parsed_url.query)
+        try:
+            parsed_url  = urlparse(self.path)
+            path        = parsed_url.path
+            query_params = parse_qs(parsed_url.query)
 
-        routes = {
-            "/api/status":          self.handle_status,
-            "/api/predict":         self.handle_predict,
-            "/api/update":          self.handle_update,
-            "/api/nepse/update":    self.handle_nepse_update,
-            "/api/nepse/predict":   self.handle_nepse_predict,
-            "/api/history":         self.handle_history,
-            "/api/history/stats":   self.handle_history_stats,
-            "/api/stock/history":   self.handle_stock_history,
-            "/api/analysis":        self.handle_analysis,
-        }
+            routes = {
+                "/api/status":          self.handle_status,
+                "/api/predict":         self.handle_predict,
+                "/api/update":          self.handle_update,
+                "/api/nepse/update":    self.handle_nepse_update,
+                "/api/nepse/predict":   self.handle_nepse_predict,
+                "/api/history":         self.handle_history,
+                "/api/history/stats":   self.handle_history_stats,
+                "/api/stock/history":   self.handle_stock_history,
+                "/api/analysis":        self.handle_analysis,
+            }
 
-        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] RECEIVED GET: {path}")
-        if path in routes:
-            routes[path](query_params)
-        else:
-            super().do_GET()
+            print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] RECEIVED GET: {path}")
+            if path in routes:
+                routes[path](query_params)
+            else:
+                super().do_GET()
+        except Exception as e:
+            print(f"[ERROR] Unhandled exception in do_GET: {e}")
+            self.send_json_response(500, {"status": "error", "message": f"Internal server error: {e}"})
 
     def end_headers(self):
         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -48,23 +52,27 @@ class NEPSEPredictorHandler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_POST(self):
-        parsed_url   = urlparse(self.path)
-        path         = parsed_url.path
-        length       = int(self.headers.get("Content-Length", 0))
-        body         = self.rfile.read(length)
         try:
-            payload = json.loads(body) if body else {}
-        except Exception:
-            payload = {}
+            parsed_url   = urlparse(self.path)
+            path         = parsed_url.path
+            length       = int(self.headers.get("Content-Length", 0))
+            body         = self.rfile.read(length)
+            try:
+                payload = json.loads(body) if body else {}
+            except Exception:
+                payload = {}
 
-        if path == "/api/history/autocheck":
-            self.handle_history_autocheck(payload)
-        elif path == "/api/history/delete":
-            self.handle_history_delete(payload)
-        elif path == "/api/chat":
-            self.handle_chat(payload)
-        else:
-            self.send_json_response(404, {"error": "Not Found"})
+            if path == "/api/history/autocheck":
+                self.handle_history_autocheck(payload)
+            elif path == "/api/history/delete":
+                self.handle_history_delete(payload)
+            elif path == "/api/chat":
+                self.handle_chat(payload)
+            else:
+                self.send_json_response(404, {"error": "Not Found"})
+        except Exception as e:
+            print(f"[ERROR] Unhandled exception in do_POST: {e}")
+            self.send_json_response(500, {"status": "error", "message": f"Internal server error: {e}"})
 
     def send_json_response(self, status_code, data):
         self.send_response(status_code)
