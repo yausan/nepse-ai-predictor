@@ -113,7 +113,7 @@ class NEPSEPredictorHandler(http.server.SimpleHTTPRequestHandler):
     def handle_predict(self, qp):
         symbol = qp.get("symbol", ["LICN"])[0].upper()
         print(f"\n[API] Retraining stock model for {symbol}...")
-        result = self._run_script(["train_model.py", "--symbol", symbol], timeout=180)
+        result = self._run_script(["train_model.py", "--symbol", symbol], timeout=600)
         if result["ok"]:
             pred_file = os.path.join("outputs", "predictions", f"{symbol.lower()}_predictions.json")
             if os.path.exists(pred_file):
@@ -131,8 +131,8 @@ class NEPSEPredictorHandler(http.server.SimpleHTTPRequestHandler):
         pages     = "all" if full_sync else "1"
         print(f"\n[API] Scraping {symbol} (pages={pages}) then retraining...")
 
-        self._run_script(["update_data.py", "--symbol", symbol, "--pages", pages], timeout=300)
-        result = self._run_script(["train_model.py", "--symbol", symbol], timeout=180)
+        self._run_script(["update_data.py", "--symbol", symbol, "--pages", pages], timeout=600)
+        result = self._run_script(["train_model.py", "--symbol", symbol], timeout=600)
 
         if result["ok"]:
             pred_file = os.path.join("outputs", "predictions", f"{symbol.lower()}_predictions.json")
@@ -148,17 +148,17 @@ class NEPSEPredictorHandler(http.server.SimpleHTTPRequestHandler):
     def handle_nepse_update(self, qp):
         pages = qp.get("pages", ["3"])[0]
         print(f"\n[API] Scraping NEPSE Index (pages={pages})...")
-        self._run_script(["scrape_nepse.py", "--pages", pages], timeout=360)
+        self._run_script(["scrape_nepse.py", "--pages", pages], timeout=600)
 
         print("[API] Training NEPSE index model...")
-        result = self._run_script(["predict_nepse.py"], timeout=180)
+        result = self._run_script(["predict_nepse.py"], timeout=300)
 
         if result["ok"] and os.path.exists(os.path.join("outputs", "predictions", "nepse_predictions.json")):
             with open(os.path.join("outputs", "predictions", "nepse_predictions.json")) as f:
                 self.send_json_response(200, {"status": "success", "data": json.load(f)})
         else:
             # Try to just run predict on whatever data exists
-            result2 = self._run_script(["predict_nepse.py"], timeout=180)
+            result2 = self._run_script(["predict_nepse.py"], timeout=300)
             if result2["ok"] and os.path.exists(os.path.join("outputs", "predictions", "nepse_predictions.json")):
                 with open(os.path.join("outputs", "predictions", "nepse_predictions.json")) as f:
                     self.send_json_response(200, {"status": "success", "data": json.load(f)})
@@ -171,7 +171,7 @@ class NEPSEPredictorHandler(http.server.SimpleHTTPRequestHandler):
     # ── NEPSE Index: Predict only ────────────────────────────────────────
     def handle_nepse_predict(self, _qp):
         print("\n[API] Running NEPSE Index prediction (no scrape)...")
-        result = self._run_script(["predict_nepse.py"], timeout=180)
+        result = self._run_script(["predict_nepse.py"], timeout=300)
         if result["ok"] and os.path.exists(os.path.join("outputs", "predictions", "nepse_predictions.json")):
             with open(os.path.join("outputs", "predictions", "nepse_predictions.json")) as f:
                 self.send_json_response(200, {"status": "success", "data": json.load(f)})
@@ -347,7 +347,7 @@ class NEPSEPredictorHandler(http.server.SimpleHTTPRequestHandler):
     def handle_analysis(self, qp):
         symbol = qp.get("symbol", ["LICN"])[0].upper()
         print(f"\n[API] Running 7-layer analysis for {symbol}...")
-        result = self._run_script(["analysis.py", "--symbol", symbol], timeout=120)
+        result = self._run_script(["analysis.py", "--symbol", symbol], timeout=600)
         if result["ok"]:
             analysis_file = os.path.join("outputs", "analysis", f"{symbol.lower()}_analysis.json")
             if os.path.exists(analysis_file):
