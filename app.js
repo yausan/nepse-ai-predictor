@@ -628,8 +628,8 @@ function updateNepseDashboard(data) {
 
     // Charts
     if (data.chart_data) {
-        renderNepseChart(data.chart_data);
-        renderNepsePerfChart(data.chart_data);
+        renderNepseChart(data.chart_data, data.predictions || { "1D": pred });
+        renderNepsePerfChart(data.chart_data, data.predictions || { "1D": pred });
     }
 }
 
@@ -799,8 +799,8 @@ function updateStockDashboard(data) {
 
     // Charts
     if (data.chart_data) {
-        renderStockChart(data.chart_data);
-        renderStockPerfChart(data.chart_data);
+        renderStockChart(data.chart_data, data.predictions || { "1D": pred });
+        renderStockPerfChart(data.chart_data, data.predictions || { "1D": pred });
     }
     if (data.feature_importances) {
         renderFeatureChart(data.feature_importances);
@@ -1281,12 +1281,35 @@ function updateConfRing(pct, direction) {
 // ─────────────────────────────────────────────────────
 //  CHARTS — NEPSE
 // ─────────────────────────────────────────────────────
-function renderNepseChart(chartData) {
+function renderNepseChart(chartData, predictionsObj) {
     if (!chartData || !chartData.dates) return;
     const canvas = document.getElementById('nepseChart');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (nepseChart) nepseChart.destroy();
+
+    const labels = [...chartData.dates];
+    const actual = [...chartData.actual];
+    const sma20 = [...chartData.sma20];
+    const bb_upper = [...chartData.bb_upper];
+    const bb_lower = [...chartData.bb_lower];
+    const futureData = new Array(labels.length).fill(null);
+
+    if (predictionsObj) {
+        if (actual.length > 0) futureData[futureData.length - 1] = actual[actual.length - 1];
+        
+        const preds = Object.values(predictionsObj).filter(p => p && p.date && p.date > labels[labels.length - 1]);
+        preds.sort((a, b) => a.date.localeCompare(b.date));
+        
+        preds.forEach(pred => {
+            labels.push(pred.date);
+            actual.push(null);
+            sma20.push(null);
+            bb_upper.push(null);
+            bb_lower.push(null);
+            futureData.push(pred.predicted_close);
+        });
+    }
 
     const blueGrad = ctx.createLinearGradient(0, 0, 0, 240);
     blueGrad.addColorStop(0, 'rgba(59,130,246,0.22)');
@@ -1295,11 +1318,11 @@ function renderNepseChart(chartData) {
     nepseChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: chartData.dates,
+            labels: labels,
             datasets: [
                 {
                     label: 'NEPSE Index',
-                    data: chartData.actual,
+                    data: actual,
                     borderColor: '#3b82f6',
                     borderWidth: 2.5,
                     backgroundColor: blueGrad,
@@ -1309,8 +1332,20 @@ function renderNepseChart(chartData) {
                     pointHoverRadius: 4,
                 },
                 {
+                    label: 'AI Forecast',
+                    data: futureData,
+                    borderColor: '#8b5cf6',
+                    borderWidth: 2.5,
+                    borderDash: [5, 5],
+                    fill: false,
+                    tension: 0.25,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: '#8b5cf6'
+                },
+                {
                     label: 'SMA 20',
-                    data: chartData.sma20,
+                    data: sma20,
                     borderColor: '#f59e0b',
                     borderWidth: 1.5,
                     borderDash: [5,5],
@@ -1320,7 +1355,7 @@ function renderNepseChart(chartData) {
                 },
                 {
                     label: 'Upper BB',
-                    data: chartData.bb_upper,
+                    data: bb_upper,
                     borderColor: 'rgba(139,92,246,0.4)',
                     borderWidth: 1,
                     fill: false,
@@ -1328,7 +1363,7 @@ function renderNepseChart(chartData) {
                 },
                 {
                     label: 'Lower BB',
-                    data: chartData.bb_lower,
+                    data: bb_lower,
                     borderColor: 'rgba(139,92,246,0.4)',
                     borderWidth: 1,
                     fill: '-1',
@@ -1341,22 +1376,37 @@ function renderNepseChart(chartData) {
     });
 }
 
-function renderNepsePerfChart(chartData) {
+function renderNepsePerfChart(chartData, predictionsObj) {
     if (!chartData || !chartData.dates) return;
     const canvas = document.getElementById('nepsePerfChart');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (nepsePerfChart) nepsePerfChart.destroy();
 
-    const d30 = chartData.dates.slice(-30);
-    const a30 = chartData.actual ? chartData.actual.slice(-30) : [];
-    const p30 = chartData.predicted ? chartData.predicted.slice(-30) : d30.map(date => {
+    const labels = [...chartData.dates];
+    const a30_full = chartData.actual ? [...chartData.actual] : [];
+    const p30_full = chartData.predicted ? [...chartData.predicted] : labels.map(date => {
         const match = historyData.find(e => 
             (e.symbol === 'NEPSE' || e.type === 'index' || e.type === 'nepse_index') &&
             e.prediction_date === date
         );
         return match ? match.predicted_close : null;
     });
+
+    if (predictionsObj) {
+        const preds = Object.values(predictionsObj).filter(p => p && p.date && p.date > labels[labels.length - 1]);
+        preds.sort((a, b) => a.date.localeCompare(b.date));
+        
+        preds.forEach(pred => {
+            labels.push(pred.date);
+            a30_full.push(null);
+            p30_full.push(pred.predicted_close);
+        });
+    }
+
+    const d30 = labels.slice(-35);
+    const a30 = a30_full.slice(-35);
+    const p30 = p30_full.slice(-35);
 
     nepsePerfChart = new Chart(ctx, {
         type: 'line',
@@ -1374,12 +1424,37 @@ function renderNepsePerfChart(chartData) {
 // ─────────────────────────────────────────────────────
 //  CHARTS — STOCK
 // ─────────────────────────────────────────────────────
-function renderStockChart(chartData) {
+function renderStockChart(chartData, predictionsObj) {
     if (!chartData || !chartData.dates) return;
     const canvas = document.getElementById('priceChart');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (stockChart) stockChart.destroy();
+
+    const labels = [...chartData.dates];
+    const actual = [...chartData.actual];
+    const sma20 = [...chartData.sma20];
+    const bb_upper = [...chartData.bb_upper];
+    const bb_lower = [...chartData.bb_lower];
+    const volume = [...(chartData.volume || [])];
+    const futureData = new Array(labels.length).fill(null);
+
+    if (predictionsObj) {
+        if (actual.length > 0) futureData[futureData.length - 1] = actual[actual.length - 1];
+        
+        const preds = Object.values(predictionsObj).filter(p => p && p.date && p.date > labels[labels.length - 1]);
+        preds.sort((a, b) => a.date.localeCompare(b.date));
+        
+        preds.forEach(pred => {
+            labels.push(pred.date);
+            actual.push(null);
+            sma20.push(null);
+            bb_upper.push(null);
+            bb_lower.push(null);
+            volume.push(0);
+            futureData.push(pred.predicted_close);
+        });
+    }
 
     const blueGrad = ctx.createLinearGradient(0, 0, 0, 240);
     blueGrad.addColorStop(0, 'rgba(59,130,246,0.22)');
@@ -1388,11 +1463,11 @@ function renderStockChart(chartData) {
     stockChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: chartData.dates,
+            labels: labels,
             datasets: [
                 {
                     label: 'Actual Close',
-                    data: chartData.actual,
+                    data: actual,
                     borderColor: '#3b82f6',
                     borderWidth: 2.5,
                     backgroundColor: blueGrad,
@@ -1402,8 +1477,21 @@ function renderStockChart(chartData) {
                     yAxisID: 'y'
                 },
                 {
+                    label: 'AI Forecast',
+                    data: futureData,
+                    borderColor: '#8b5cf6',
+                    borderWidth: 2.5,
+                    borderDash: [5, 5],
+                    fill: false,
+                    tension: 0.25,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    pointBackgroundColor: '#8b5cf6',
+                    yAxisID: 'y'
+                },
+                {
                     label: 'SMA 20',
-                    data: chartData.sma20,
+                    data: sma20,
                     borderColor: '#f59e0b',
                     borderWidth: 1.5,
                     borderDash: [5,5],
@@ -1413,14 +1501,14 @@ function renderStockChart(chartData) {
                 },
                 {
                     label: 'Upper BB',
-                    data: chartData.bb_upper,
+                    data: bb_upper,
                     borderColor: 'rgba(139,92,246,0.4)',
                     borderWidth: 1, fill: false, pointRadius: 0,
                     yAxisID: 'y'
                 },
                 {
                     label: 'Lower BB',
-                    data: chartData.bb_lower,
+                    data: bb_lower,
                     borderColor: 'rgba(139,92,246,0.4)',
                     borderWidth: 1, fill: '-1',
                     backgroundColor: 'rgba(139,92,246,0.03)',
@@ -1429,7 +1517,7 @@ function renderStockChart(chartData) {
                 {
                     label: 'Volume',
                     type: 'bar',
-                    data: chartData.volume,
+                    data: volume,
                     backgroundColor: 'rgba(255,255,255,0.06)',
                     barPercentage: 0.6,
                     yAxisID: 'y1'
@@ -1451,7 +1539,7 @@ function renderStockChart(chartData) {
     });
 }
 
-function renderStockPerfChart(chartData) {
+function renderStockPerfChart(chartData, predictionsObj) {
     if (!chartData || !chartData.dates) return;
     const canvas = document.getElementById('perfChart');
     if (!canvas) return;
@@ -1461,9 +1549,9 @@ function renderStockPerfChart(chartData) {
     const sym = getSymbol();
     const timeframe = activeTimeframe || '1D';
 
-    const d30 = chartData.dates.slice(-30);
-    const a30 = chartData.actual ? chartData.actual.slice(-30) : [];
-    const p30 = chartData.predicted ? chartData.predicted.slice(-30) : d30.map(date => {
+    const labels = [...chartData.dates];
+    const a30_full = chartData.actual ? [...chartData.actual] : [];
+    const p30_full = chartData.predicted ? [...chartData.predicted] : labels.map(date => {
         const match = historyData.find(e => {
             const isSymMatch = e.symbol === sym || e.id?.split('_')[0]?.toUpperCase() === sym;
             const isDateMatch = e.prediction_date === date;
@@ -1472,6 +1560,21 @@ function renderStockPerfChart(chartData) {
         });
         return match ? match.predicted_close : null;
     });
+
+    if (predictionsObj) {
+        const preds = Object.values(predictionsObj).filter(p => p && p.date && p.date > labels[labels.length - 1]);
+        preds.sort((a, b) => a.date.localeCompare(b.date));
+        
+        preds.forEach(pred => {
+            labels.push(pred.date);
+            a30_full.push(null);
+            p30_full.push(pred.predicted_close);
+        });
+    }
+
+    const d30 = labels.slice(-35);
+    const a30 = a30_full.slice(-35);
+    const p30 = p30_full.slice(-35);
 
     stockPerfChart = new Chart(ctx, {
         type: 'line',
