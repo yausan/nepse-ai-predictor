@@ -230,6 +230,7 @@ class NEPSEPredictorHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 print(f"[Autocheck] ✗ Error refreshing {sym}: {e}")
 
+        for entry in history:
             if entry["status"] != "pending":
                 continue
             if entry["prediction_date"] > today:
