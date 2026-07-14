@@ -198,15 +198,38 @@ class NEPSEPredictorHandler(http.server.SimpleHTTPRequestHandler):
         if not os.path.exists(HISTORY_FILE):
             self.send_json_response(200, {"status": "success", "resolved": 0})
             return
-            
+
         with open(HISTORY_FILE, "r") as f:
             history = json.load(f)
-            
+
         from datetime import datetime
         resolved_count = 0
         today = datetime.now().strftime("%Y-%m-%d")
-        
+
+        # ── Step 1: Scrape fresh data for every unique symbol with past-due pending entries ──
+        symbols_needing_refresh = set()
         for entry in history:
+            if entry.get("status") == "pending" and entry.get("prediction_date", "9999") <= today:
+                sym = entry.get("symbol") or ""
+                if not sym and entry.get("type") == "nepse_index":
+                    sym = "NEPSE"
+                if sym:
+                    symbols_needing_refresh.add(sym.upper())
+
+        print(f"[Autocheck] Refreshing data for {len(symbols_needing_refresh)} symbol(s): {symbols_needing_refresh}")
+        for sym in symbols_needing_refresh:
+            try:
+                r = subprocess.run(
+                    [sys.executable, "update_data.py", "--symbol", sym, "--pages", "1"],
+                    capture_output=True, text=True, timeout=120,
+                )
+                if r.returncode == 0:
+                    print(f"[Autocheck] ✓ Refreshed {sym}")
+                else:
+                    print(f"[Autocheck] ✗ Failed to refresh {sym}: {r.stderr[-300:]}")
+            except Exception as e:
+                print(f"[Autocheck] ✗ Error refreshing {sym}: {e}")
+
             if entry["status"] != "pending":
                 continue
             if entry["prediction_date"] > today:
